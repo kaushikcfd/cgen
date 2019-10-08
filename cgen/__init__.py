@@ -130,7 +130,7 @@ class POD(Declarator):
         self.name = name
 
     def get_decl_pair(self, trailing_parens=0):
-        return [dtype_to_ctype(self.dtype)], self.name
+        return [dtype_to_ctype(self.dtype)], self.name + ')'*trailing_parens
 
     def struct_maker_code(self, name):
         return name
@@ -240,9 +240,11 @@ class Const(NestedDeclarator):
     def get_decl_pair(self, trailing_parens=0):
         sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         if isinstance(sub_decl, POD):
-            return "const " + sub_tp, sub_decl
+            sub_tp[-1] = "const " + sub_tp[-1]
         else:
-            return sub_tp + " const", sub_decl
+            sub_tp[-1] = sub_tp[-1] + " const"
+
+        return sub_tp, sub_decl
 
     mapper_method = "map_const"
 
@@ -250,7 +252,9 @@ class Const(NestedDeclarator):
 class Volatile(NestedDeclarator):
     def get_decl_pair(self, trailing_parens=0):
         sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
-        return sub_tp, ("volatile %s" % sub_decl)
+        sub_tp[-1] = "volatile " + sub_tp[-1]
+
+        return sub_tp, sub_decl
 
     mapper_method = "map_volatile"
 
@@ -302,18 +306,17 @@ class Pointer(NestedDeclarator):
         NestedDeclarator.__init__(self, subdecl)
 
     def get_decl_pair(self, trailing_parens=0):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
+        precedes_higer_prec_elem = int(isinstance(self.subdecl, (ArrayOf,
+            FunctionDeclaration)))
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(
+                trailing_parens+precedes_higer_prec_elem)
 
-        if not isinstance(self.subdecl, (Pointer, POD, Value)):
-            # declarator might "change direction"
-            # (e.g. include an array declarator)
-            #
-            # Note that * binds less strongly than [], so these
-            # parentheses might not be necessary. Nonetheless,
-            # we insert them for clarity.
-            sub_decl = "(%s)" % sub_decl
+        if precedes_higer_prec_elem:
+            sub_tp[-1] = sub_tp[-1] + "("
 
-        return sub_tp, ("*%s" % sub_decl)
+        sub_tp[-1] = sub_tp[-1] + "*"
+
+        return sub_tp, sub_decl
 
     def struct_maker_code(self, data):
         raise NotImplementedError
@@ -329,18 +332,18 @@ class Pointer(NestedDeclarator):
 
 class RestrictPointer(Pointer):
     def get_decl_pair(self, trailing_parens=0):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
 
-        if not isinstance(self.subdecl, (Pointer, POD, Value)):
-            # declarator might "change direction"
-            # (e.g. include an array declarator)
-            #
-            # Note that * binds less strongly than [], so these
-            # parentheses might not be necessary. Nonetheless,
-            # we insert them for clarity.
-            sub_decl = "(%s)" % sub_decl
+        precedes_higer_prec_elem = int(isinstance(self.subdecl, (ArrayOf,
+            FunctionDeclaration)))
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(
+                trailing_parens+precedes_higer_prec_elem)
 
-        return sub_tp, ("*__restrict__ %s" % sub_decl)
+        if precedes_higer_prec_elem:
+            sub_tp[-1] = sub_tp[-1] + " ("
+
+        sub_tp[-1] = sub_tp[-1] + "*__restrict__ "
+
+        return sub_tp, sub_decl
 
     mapper_method = "map_restrict_pointer"
 
@@ -374,11 +377,6 @@ class ArrayOf(NestedDeclarator):
             count_str = ""
         else:
             count_str = str(self.count)
-
-        if not isinstance(self.subdecl, (POD, Value, ArrayOf)):
-            # declarator might "change direction"
-            # (e.g. include a pointer declarator)
-            sub_decl = "(%s)" % sub_decl
 
         return sub_tp, ("%s[%s]" % (sub_decl, count_str))
 
