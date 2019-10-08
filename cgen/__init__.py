@@ -233,9 +233,16 @@ class Static(DeclSpecifier):
 
 
 class Const(NestedDeclarator):
+    def __init__(self, subdecl):
+        assert isinstance(subdecl, (POD, Pointer))
+        super(Const, self).__init__(subdecl)
+
     def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
-        return sub_tp, ("const %s" % sub_decl)
+        if isinstance(sub_decl, POD):
+            return "const " + sub_tp, sub_decl
+        else:
+            return sub_tp + " const", sub_decl
 
     mapper_method = "map_const"
 
