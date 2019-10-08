@@ -101,7 +101,7 @@ class Declarator(Generable):
         else:
             yield "%s %s%s" % (tp_lines[-1], tp_decl, sc)
 
-    def get_decl_pair(self):
+    def get_decl_pair(self, trailing_parens=0):
         """Return a tuple ``(type_lines, rhs)``.
 
         *type_lines* is a non-empty list of lines (most often just a
@@ -129,7 +129,7 @@ class POD(Declarator):
         self.dtype = numpy.dtype(dtype)
         self.name = name
 
-    def get_decl_pair(self):
+    def get_decl_pair(self, trailing_parens=0):
         return [dtype_to_ctype(self.dtype)], self.name
 
     def struct_maker_code(self, name):
@@ -154,7 +154,7 @@ class Value(Declarator):
         self.typename = typename
         self.name = name
 
-    def get_decl_pair(self):
+    def get_decl_pair(self, trailing_parens=0):
         return [self.typename], self.name
 
     def struct_maker_code(self, data):
@@ -186,8 +186,8 @@ class NestedDeclarator(Declarator):
     def struct_maker_code(self, data):
         return self.subdecl.struct_maker_code(data)
 
-    def get_decl_pair(self):
-        return self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        return self.subdecl.get_decl_pair(trailing_parens)
 
 
 class DeclSpecifier(NestedDeclarator):
@@ -196,7 +196,7 @@ class DeclSpecifier(NestedDeclarator):
         self.spec = spec
         self.sep = sep
 
-    def get_decl_pair(self):
+    def get_decl_pair(self, trailing_parens=0):
         def add_spec(sub_it):
             it = iter(sub_it)
             try:
@@ -207,7 +207,7 @@ class DeclSpecifier(NestedDeclarator):
             for line in it:
                 yield line
 
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         return add_spec(sub_tp), sub_decl
 
 
@@ -237,8 +237,8 @@ class Const(NestedDeclarator):
         assert isinstance(subdecl, (POD, Pointer))
         super(Const, self).__init__(subdecl)
 
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         if isinstance(sub_decl, POD):
             return "const " + sub_tp, sub_decl
         else:
@@ -248,8 +248,8 @@ class Const(NestedDeclarator):
 
 
 class Volatile(NestedDeclarator):
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         return sub_tp, ("volatile %s" % sub_decl)
 
     mapper_method = "map_volatile"
@@ -268,8 +268,8 @@ class TemplateSpecializer(NestedDeclarator):
         self.specializer = specializer
         NestedDeclarator.__init__(self, subdecl)
 
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         sub_tp[-1] = sub_tp[-1] + '<%s>' % self.specializer
         return sub_tp, sub_decl
 
@@ -277,8 +277,8 @@ class TemplateSpecializer(NestedDeclarator):
 
 
 class MaybeUnused(NestedDeclarator):
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         return sub_tp, ("(%s __attribute__ ((unused)))" % sub_decl)
 
     mapper_method = "map_maybe_unused"
@@ -289,8 +289,8 @@ class AlignedAttribute(NestedDeclarator):
         super(AlignedAttribute, self).__init__(subdecl)
         self.align_bytes = align_bytes
 
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         return sub_tp, ("%s __attribute__ ((aligned (%d)))"
                 % (sub_decl, self.align_bytes))
 
@@ -301,8 +301,8 @@ class Pointer(NestedDeclarator):
     def __init__(self, subdecl):
         NestedDeclarator.__init__(self, subdecl)
 
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
 
         if not isinstance(self.subdecl, (Pointer, POD, Value)):
             # declarator might "change direction"
@@ -328,8 +328,8 @@ class Pointer(NestedDeclarator):
 
 
 class RestrictPointer(Pointer):
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
 
         if not isinstance(self.subdecl, (Pointer, POD, Value)):
             # declarator might "change direction"
@@ -346,8 +346,8 @@ class RestrictPointer(Pointer):
 
 
 class Reference(Pointer):
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
 
         if not isinstance(self.subdecl, (Pointer, POD, Value)):
             # declarator might "change direction"
@@ -368,8 +368,8 @@ class ArrayOf(NestedDeclarator):
         NestedDeclarator.__init__(self, subdecl)
         self.count = count
 
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
         if self.count is None:
             count_str = ""
         else:
@@ -405,8 +405,8 @@ class FunctionDeclaration(NestedDeclarator):
         NestedDeclarator.__init__(self, subdecl)
         self.arg_decls = arg_decls
 
-    def get_decl_pair(self):
-        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+    def get_decl_pair(self, trailing_parens=0):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair(trailing_parens)
 
         return sub_tp, ("%s(%s)" % (
             sub_decl,
@@ -440,7 +440,7 @@ class Struct(Declarator):
         self.declname = declname
         self.pad_bytes = pad_bytes
 
-    def get_decl_pair(self):
+    def get_decl_pair(self, trailing_parens=0):
         def get_tp():
             if self.tpname is not None:
                 yield "struct %s" % self.tpname
